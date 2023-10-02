@@ -85,6 +85,5 @@ def export_to_excel(request):
 
     del wb['Sheet']
     wb.save(response)
-
     return response
 
