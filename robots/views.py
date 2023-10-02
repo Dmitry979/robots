@@ -36,63 +36,55 @@ def html_index(request):
     return render(request, 'robots/index.html')
 
 
-def export_to_excel(request):
-    # Определяем дату начала недели (7 дней назад от текущей даты)
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=7)
-
-    # Получаем уникальные модели роботов из базы данных, учитывая только записи за последнюю неделю
-    unique_models = (
+def get_unique_models(start_date, end_date):
+    return (
         Robot.objects
         .filter(created__gte=start_date, created__lte=end_date)
         .values('model')
         .distinct()
     )
 
-    # Если нет уникальных моделей, значит, за последнюю неделю нет новых записей
+
+def get_versions_for_model(model, start_date, end_date):
+    return (
+        Robot.objects
+        .filter(model=model, created__gte=start_date, created__lte=end_date)
+        .values('version')
+        .annotate(total_count=Count('id'))
+    )
+
+
+def create_excel_sheet(wb, model, versions):
+    ws = wb.create_sheet(title=f"Модель {model}")
+    headers = ["Модель", "Версия", "Количество"]
+    ws.append(headers)
+
+    for version_info in versions:
+        version = version_info['version']
+        total_count = version_info['total_count']
+        ws.append([model, version, total_count])
+
+
+def export_to_excel(request):
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=7)
+
+    unique_models = get_unique_models(start_date, end_date)
+
     if not unique_models:
         return HttpResponse("Новых роботов нет")
 
-    # Создаем HTTP-ответ с типом контента "application/ms-excel" для Excel-файла
     response = HttpResponse(content_type='application/ms-excel')
-
-    # Устанавливаем имя файла, который будет использоваться при скачивании
     response['Content-Disposition'] = 'attachment; filename="Robot.xlsx"'
-
-    # Создаем новую рабочую книгу Excel
     wb = Workbook()
 
-    # Проходим по уникальным моделям
     for model_info in unique_models:
         model = model_info['model']
+        versions = get_versions_for_model(model, start_date, end_date)
+        create_excel_sheet(wb, model, versions)
 
-        # Создаем новый лист Excel для каждой модели
-        ws = wb.create_sheet(title=f"Модель {model}")
-
-        # Заголовок на листе
-        headers = ["Модель", "Версия", "Количество"]
-        ws.append(headers)
-
-        # Получаем данные о версиях роботов для данной модели с учетом количества, учитывая только записи за последнюю неделю
-        versions = (
-            Robot.objects
-            .filter(model=model, created__gte=start_date, created__lte=end_date)
-            .values('version')
-            .annotate(total_count=Count('id'))
-        )
-
-        # Цикл по версиям роботов данной модели
-        for version_info in versions:
-            version = version_info['version']
-            total_count = version_info['total_count']
-
-            # Добавляем данные о версии и общем количестве на лист
-            ws.append([model, version, total_count])
-
-    # Удаляем первый лист (по умолчанию) и сохраняем рабочую книгу в HTTP-ответ
     del wb['Sheet']
     wb.save(response)
 
-    # Возвращаем HTTP-ответ, содержащий Excel-файл
     return response
 
