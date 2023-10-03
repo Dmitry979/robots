@@ -7,29 +7,38 @@ from django.http import HttpResponse
 from django.shortcuts import render
 from django.db.models import Count
 from datetime import datetime, timedelta
+from .forms import RobotForm
+
 
 
 @csrf_exempt
 def create_robot(request):
     if request.method == 'POST':
         try:
-            data = json.loads(request.body)  # Разбираем JSON-данные из запроса
+            # Парсим JSON-данные из запроса
+            data = json.loads(request.body)
 
-            # Создаем объект робота, используя данные из JSON
-            robot = Robot(
-                model=data.get('model'),
-                version=data.get('version'),
-                created=data.get('created')
-            )
-            # Сохраняем робота в базе данных
-            robot.save()
+            # Создаем форму и заполняем ее данными
+            form = RobotForm(data)
+            if form.is_valid():
+                # Если данные валидны, создаем объект робота и сохраняем его
+                robot = Robot(
+                    model=data.get('model'),
+                    version=data.get('version'),
+                    created=data.get('created'))
+                robot.save()
 
-            return JsonResponse({'message': 'Robot created successfully', 'id': robot.id}, status=201)
+                return JsonResponse({'message': 'Robot created successfully', 'id': robot.id}, status=201)
+            else:
+                # Возвращаем JSON с сообщением об ошибках валидации
+                return JsonResponse({'message': 'Invalid input data', 'errors': form.errors}, status=400)
+
         except json.JSONDecodeError:
             # Возвращаем JSON с сообщением об ошибке, если данные не могут быть разобраны как JSON
             return JsonResponse({'message': 'Invalid JSON data'}, status=400)
 
     return JsonResponse({'message': 'Only POST requests are allowed'}, status=405)
+
 
 
 def html_index(request):
